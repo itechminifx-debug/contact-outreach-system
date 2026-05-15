@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Proposal | Outreach System</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: #f0f2f5; }
+        .header { background: linear-gradient(135deg, #075E54, #128C7E); color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+        .header h1 { font-size: 22px; }
+        .header a { color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 8px; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 30px 20px; }
+        
+        .card { background: white; border-radius: 16px; padding: 25px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .card h3 { margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; color: #555; }
+        .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+        .form-group textarea { min-height: 200px; resize: vertical; font-family: monospace; }
+        
+        .btn { padding: 12px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .btn-whatsapp { background: #25D366; color: white; }
+        .btn-email { background: #EA4335; color: white; }
+        .btn-primary { background: #6366f1; color: white; }
+        .btn-whatsapp:hover, .btn-email:hover, .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        
+        .message-preview { background: #f8fafc; border-radius: 12px; padding: 20px; margin-top: 20px; border: 1px solid #e2e8f0; white-space: pre-wrap; font-family: monospace; font-size: 13px; }
+        
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 12px 24px; border-radius: 50px; font-size: 13px; z-index: 1001; display: none; }
+        
+        .method-buttons { display: flex; gap: 15px; margin-top: 20px; justify-content: center; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📤 Send Business Proposal</h1>
+        <div><a href="index.html">← Dashboard</a> <a href="contacts.html" style="margin-left: 10px;">👥 Contacts</a> <a href="proposals.html" style="margin-left: 10px;">📄 Proposals</a></div>
+    </div>
+    
+    <div class="container">
+        <div class="card">
+            <h3>📋 Select Recipient & Proposal</h3>
+            <div class="form-group"><label>Select Contact</label><select id="contactSelect"><option value="">-- Select Contact --</option></select></div>
+            <div class="form-group"><label>Select Proposal Template</label><select id="proposalSelect"><option value="">-- Select Proposal --</option></select></div>
+            
+            <div class="form-group"><label>Message Preview (will be sent)</label><div id="messagePreview" class="message-preview">Select contact and proposal to preview message...</div></div>
+            
+            <div class="method-buttons">
+                <button class="btn btn-whatsapp" onclick="sendViaWhatsApp()">💬 Send via WhatsApp</button>
+                <button class="btn btn-email" onclick="sendViaEmail()">📧 Send via Email</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API_URL = '';
+        let contacts = [];
+        let proposals = [];
+        
+        window.onload = async function() {
+            await loadContacts();
+            await loadProposals();
+        };
+        
+        async function loadContacts() {
+            try {
+                const res = await fetch(API_URL + '/api/contacts');
+                contacts = await res.json();
+                const select = document.getElementById('contactSelect');
+                select.innerHTML = '<option value="">-- Select Contact --</option>';
+                contacts.forEach(c => { select.innerHTML += `<option value="${c.id}" data-phone="${c.phone}" data-email="${c.email}" data-name="${escapeHtml(c.name)}">${escapeHtml(c.name)} (${c.phone || c.email || 'No contact info'})</option>`; });
+                document.getElementById('contactSelect').addEventListener('change', updatePreview);
+                document.getElementById('proposalSelect').addEventListener('change', updatePreview);
+            } catch(e) { console.error(e); }
+        }
+        
+        async function loadProposals() {
+            try {
+                const res = await fetch(API_URL + '/api/proposals');
+                proposals = await res.json();
+                const select = document.getElementById('proposalSelect');
+                select.innerHTML = '<option value="">-- Select Proposal --</option>';
+                proposals.forEach(p => { select.innerHTML += `<option value="${p.id}">${escapeHtml(p.title)}</option>`; });
+            } catch(e) { console.error(e); }
+        }
+        
+        function updatePreview() {
+            const contactId = document.getElementById('contactSelect').value;
+            const proposalId = document.getElementById('proposalSelect').value;
+            if (!contactId || !proposalId) {
+                document.getElementById('messagePreview').innerHTML = 'Select contact and proposal to preview message...';
+                return;
+            }
+            const contact = contacts.find(c => c.id === contactId);
+            const proposal = proposals.find(p => p.id === proposalId);
+            if (contact && proposal) {
+                let message = proposal.content || '';
+                message = message.replace(/{name}/g, contact.name);
+                message = message.replace(/{company}/g, contact.company || 'your company');
+                document.getElementById('messagePreview').innerHTML = message.replace(/\n/g, '<br>');
+            }
+        }
+        
+        async function sendViaWhatsApp() {
+            await sendMessage('whatsapp');
+        }
+        
+        async function sendViaEmail() {
+            await sendMessage('email');
+        }
+        
+        async function sendMessage(method) {
+            const contactId = document.getElementById('contactSelect').value;
+            const proposalId = document.getElementById('proposalSelect').value;
+            
+            if (!contactId) { showToast('❌ Please select a contact'); return; }
+            if (!proposalId) { showToast('❌ Please select a proposal'); return; }
+            
+            const contact = contacts.find(c => c.id === contactId);
+            const proposal = proposals.find(p => p.id === proposalId);
+            
+            if (method === 'whatsapp' && !contact.phone) { showToast('❌ Contact has no phone number for WhatsApp'); return; }
+            if (method === 'email' && !contact.email) { showToast('❌ Contact has no email address'); return; }
+            
+            showToast('📤 Preparing message...');
+            
+            try {
+                const res = await fetch(API_URL + '/api/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contactId, proposalId, method })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    if (method === 'whatsapp' && data.whatsappLink) {
+                        window.open(data.whatsappLink, '_blank');
+                        showToast('✅ WhatsApp opened! Click send in WhatsApp');
+                    } else if (method === 'email' && data.emailLink) {
+                        window.location.href = data.emailLink;
+                        showToast('✅ Email client opened! Click send in your email app');
+                    } else {
+                        showToast('✅ Message prepared! Check the generated link.');
+                    }
+                } else {
+                    showToast('❌ Failed to prepare message');
+                }
+            } catch(e) {
+                console.error(e);
+                showToast('❌ Error sending message');
+            }
+        }
+        
+        function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000); }
+        function escapeHtml(s) { if (!s) return ''; return String(s).replace(/[&<>]/g, function(m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; return m; }); }
+    </script>
+</body>
+</html>
